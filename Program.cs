@@ -28,9 +28,9 @@ namespace IngameScript
 
         string LCD_Keyword = "[KMS]";
 
-        string UpThrust_GroupName = "[Bore] Up Thrust";
-        string GridController_Name = "[Bore] Bore Command Chair";
-        string JumpDrives_GroupName = "[Bore] JD";
+        string UpThrust_GroupName = "DrillerZ - Up Thrust";
+        string GridController_Name = "DrillerZ - Industrial Cockpit [KMS]";
+        string JumpDrives_GroupName = "";
 
         float refineryYield = 1.0f; // 100%
         
@@ -48,6 +48,7 @@ namespace IngameScript
         // --- Sprite Drawing Stuff ---
         IMyTextSurface _drawingSurface;
         RectangleF _viewport;
+        bool isCockpit = false;
 
         List<IMyThrust> groupThrusters = new List<IMyThrust>();
         IMyBlockGroup upwardGroup;
@@ -72,6 +73,9 @@ namespace IngameScript
         IMyBlockGroup forwardGroup;
         IMyBlockGroup reverseGroup;
         bool savedGravAlginStatus = false;
+
+        double gravity;
+        double TWR;
         
         // Cargo stuff
         List<IMyCargoContainer> cargos = new List<IMyCargoContainer>();
@@ -91,8 +95,6 @@ namespace IngameScript
         float oreCountGold = 0;
         float oreCountUranium = 0;
         float oreCountPlatinum = 0;
-        float oreCountCyrite = 0;
-        float oreCountKarnyxium = 0;
         
         float ingotCountIron = 0;
         float ingotCountNickel = 0;
@@ -103,8 +105,6 @@ namespace IngameScript
         float ingotCountGold = 0;
         float ingotCountUranium = 0;
         float ingotCountPlatinum = 0;
-        float ingotCountCyrite = 0;
-        float ingotCountKarnyxium = 0;
 
         private static readonly Dictionary<string, float> OreYields = new Dictionary<string, float>
         {
@@ -117,8 +117,6 @@ namespace IngameScript
             { "Gold", 0.01f },
             { "Platinum", 0.005f },
             { "Uranium", 0.01f },
-            { "Karnyxium", 0.00005f },
-            { "Cyrite", 0.0005f },
         };
 
         public Program()
@@ -139,8 +137,6 @@ namespace IngameScript
             OreYields["Gold"] *= refineryYield;
             OreYields["Uranium"] *= refineryYield;
             OreYields["Platinum"] *= refineryYield;
-            OreYields["Cyrite"] *= refineryYield;
-            OreYields["Karnyxium"] *= refineryYield;
 
             var lcdBlocks = new List<IMyTerminalBlock>();
             GridTerminalSystem.GetBlocksOfType(lcdBlocks, b => b != Me && b.CustomName.Contains(LCD_Keyword));
@@ -148,7 +144,13 @@ namespace IngameScript
 
             if (surfaceProvider != null && surfaceProvider.SurfaceCount > 0)
             {
-                _drawingSurface = surfaceProvider.GetSurface(0);
+                if (surfaceProvider.SurfaceCount == 4)
+                {
+                    _drawingSurface = surfaceProvider.GetSurface(3);
+                    isCockpit = true;
+                }
+                else
+                    _drawingSurface = surfaceProvider.GetSurface(0);
             }
             else
                 throw new Exception("Specified block does not have LCDs!");
@@ -208,11 +210,11 @@ namespace IngameScript
 
             var massData = controller.CalculateShipMass();
             gridMass = massData.PhysicalMass;
-            double gravity = controller.GetNaturalGravity().Length();
+            gravity = controller.GetNaturalGravity().Length();
 
             double weight = gridMass * gravity;
-            double TWR = upwardThrust / weight;
-            TWRPct = TWR / 100;
+            TWR = weight / upwardThrust;
+            TWRPct = TWR * 100;
             maxMass = upwardThrust / gravity;
 
             if (pendingSaveMass)
@@ -221,29 +223,41 @@ namespace IngameScript
                 pendingSaveMass = false;
             }
 
-            var jumpDrives = new List<IMyJumpDrive>();
-            var gridJumpDrives = GridTerminalSystem.GetBlockGroupWithName(JumpDrives_GroupName);
-
-            gridJumpDrives.GetBlocksOfType(jumpDrives);
-
-            gridJumpDriveCount = jumpDrives.Count;
-
-            double jumpDistanceDivisor = 0;
-            if (gridMass < jumpDriveMaxMass)
+            if (JumpDrives_GroupName != "")
             {
-                jumpDistanceDivisor = 1;
+                var jumpDrives = new List<IMyJumpDrive>();
+                var gridJumpDrives = GridTerminalSystem.GetBlockGroupWithName(JumpDrives_GroupName);
+
+                gridJumpDrives.GetBlocksOfType(jumpDrives);
+
+                gridJumpDriveCount = jumpDrives.Count;
+
+                double jumpDistanceDivisor = 0;
+                if (gridMass < jumpDriveMaxMass)
+                {
+                    jumpDistanceDivisor = 1;
+                }
+                else
+                {
+                    jumpDistanceDivisor = (gridMass / jumpDriveMaxMass);
+                }
+
+                maxJumpDistance = (gridJumpDriveCount * jumpDriveMaxRange) / jumpDistanceDivisor;
             }
             else
             {
-                jumpDistanceDivisor = (gridMass / jumpDriveMaxMass);
+                maxJumpDistance = 0;
+                gridJumpDriveCount = 0;
             }
 
-            maxJumpDistance = (gridJumpDriveCount * jumpDriveMaxRange) / jumpDistanceDivisor;
-            
             Echo($"Max Jump Range: {maxJumpDistance:N0} km");
             Echo($"JD Count: {gridJumpDriveCount}");
             Echo($"Grid Mass: {gridMass:N0} kg");
             Echo($"Gravity Align Enabled?: {gravityAlign}");
+            Echo($"[DEBUG] TWR: {TWR}");
+            Echo($"[DEBUG] TWRPct: {TWRPct}");
+            Echo($"[DEBUG] Gravity Value: {gravity}");
+            Echo($"[DEBUG] Max Thrust: {upwardThrust}");
 
             var totalOres = new List<CachedOre>();
             
@@ -257,8 +271,6 @@ namespace IngameScript
             oreCountGold = 0;
             oreCountUranium = 0;
             oreCountPlatinum = 0;
-            oreCountCyrite = 0;
-            oreCountKarnyxium = 0;
             
             ingotCountIron = 0;
             ingotCountNickel = 0;
@@ -269,8 +281,6 @@ namespace IngameScript
             ingotCountGold = 0;
             ingotCountUranium = 0;
             ingotCountPlatinum = 0;
-            ingotCountCyrite = 0;
-            ingotCountKarnyxium = 0;
 
             var cargos = new List<IMyCargoContainer>();
             GridTerminalSystem.GetBlocksOfType(cargos);
@@ -344,55 +354,6 @@ namespace IngameScript
                         oreCountPlatinum = oreItem.amount;
                         ingotCountPlatinum = oreCountPlatinum * OreYields["Platinum"];
                         break;
-                    case "Cyrite":
-                        oreCountCyrite = oreItem.amount;
-                        ingotCountCyrite = oreCountCyrite * OreYields["Cyrite"];
-                        break;
-                    case "Karnyxium":
-                        oreCountKarnyxium = oreItem.amount;
-                        ingotCountKarnyxium = oreCountKarnyxium * OreYields["Karnyxium"];
-                        break;
-                    case "CompactedStone":
-                        oreCountStone = oreItem.amount;
-                        break;
-                    case "CompactedIron":
-                        oreCountIron = oreItem.amount; 
-                        ingotCountIron = oreCountIron * OreYields["Iron"];
-                        break;
-                    case "CompactedNickel":
-                        oreCountNickel = oreItem.amount;
-                        ingotCountNickel = oreCountNickel * OreYields["Nickel"];
-                        break;
-                    case "CompactedCobalt":
-                        oreCountCobalt = oreItem.amount;
-                        ingotCountCobalt = oreCountCobalt * OreYields["Cobalt"];
-                        break;
-                    case "CompactedSilicon":
-                        oreCountSilicon = oreItem.amount;
-                        ingotCountSilicon = oreCountSilicon * OreYields["Silicon"];
-                        break;
-                    case "CompactedMagnesium":
-                        oreCountMagnesium = oreItem.amount;
-                        ingotCountMagnesium = oreCountMagnesium * OreYields["Magnesium"];
-                        break;
-                    case "CompactedSilver":
-                        oreCountSilver = oreItem.amount;
-                        ingotCountSilver = oreCountSilver * OreYields["Silver"];
-                        break;
-                    case "CompactedGold":
-                        oreCountGold = oreItem.amount;
-                        ingotCountGold = oreCountGold * OreYields["Gold"];
-                        break;
-                    case "CompactedUranium":
-                        oreCountUranium = oreItem.amount;
-                        ingotCountUranium = oreCountUranium * OreYields["Uranium"];
-                        break;
-                    case "CompactedPlatinum":
-                        oreCountPlatinum = oreItem.amount;
-                        ingotCountPlatinum = oreCountPlatinum * OreYields["Platinum"];
-                        break;
-                    
-
                 }
             }
             
@@ -412,10 +373,15 @@ namespace IngameScript
         public void DrawSprites(ref MySpriteDrawFrame frame)
         {
             var position = new Vector2(256, 0) + _viewport.Position;
-            
-            var oreDisplayIncrement = new Vector2(0, 26);
-
             float scale = 1.0f;
+            var oreDisplayIncrement = new Vector2(0, 26);
+            
+            if (isCockpit)
+            {
+                position = new Vector2(128, 0) + _viewport.Position;
+                scale = 0.5f;
+                oreDisplayIncrement = new Vector2(0, 12);
+            }
 
             _drawTick++;
 
@@ -429,7 +395,24 @@ namespace IngameScript
                 Alignment = TextAlignment.CENTER,
                 FontId = "White"
             });
-
+            
+            if (gravity != 0)
+            {
+                position += oreDisplayIncrement;
+                
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"Current Thrust Usage: {TWRPct:N2}%",
+                    Position = position,
+                    RotationOrScale = scale,
+                    Color = Color.White,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+            }
+            
+            position += oreDisplayIncrement;
 
             if (oreCountStone > 0)
             {
@@ -575,36 +558,6 @@ namespace IngameScript
                 {
                     Type = SpriteType.TEXT,
                     Data = $"Platinum Ore: {oreCountPlatinum:N0} ({ingotCountPlatinum:N0} ingots)",
-                    Position = position,
-                    RotationOrScale = scale,
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                });
-            }
-            if (oreCountCyrite > 0)
-            {
-                position += oreDisplayIncrement;
-
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"Cyrite Ore: {oreCountCyrite:N0} ({ingotCountCyrite:N0} ingots)",
-                    Position = position,
-                    RotationOrScale = scale,
-                    Color = Color.White,
-                    Alignment = TextAlignment.CENTER,
-                    FontId = "White"
-                });
-            }
-            if (oreCountKarnyxium > 0)
-            {
-                position += oreDisplayIncrement;
-
-                frame.Add(new MySprite()
-                {
-                    Type = SpriteType.TEXT,
-                    Data = $"Karnyxium Ore: {oreCountKarnyxium:N0} ({ingotCountKarnyxium:N0} ingots)",
                     Position = position,
                     RotationOrScale = scale,
                     Color = Color.White,
