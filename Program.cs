@@ -254,10 +254,6 @@ namespace IngameScript
             Echo($"JD Count: {gridJumpDriveCount}");
             Echo($"Grid Mass: {gridMass:N0} kg");
             Echo($"Gravity Align Enabled?: {gravityAlign}");
-            Echo($"[DEBUG] TWR: {TWR}");
-            Echo($"[DEBUG] TWRPct: {TWRPct}");
-            Echo($"[DEBUG] Gravity Value: {gravity}");
-            Echo($"[DEBUG] Max Thrust: {upwardThrust}");
 
             var totalOres = new List<CachedOre>();
             
