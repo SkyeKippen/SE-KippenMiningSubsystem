@@ -23,16 +23,15 @@ namespace IngameScript
     public partial class Program : MyGridProgram
     {
         // --- CONFIG ---
-        string version = "v0.1.0";
-        int major, minor, build;
+        string version = "v0.2.0";
 
         string LCD_Keyword = "[KMS]";
 
         string UpThrust_GroupName = "DrillerZ - Up Thrust";
-        string GridController_Name = "DrillerZ - Industrial Cockpit [KMS]";
+        string GridController_Name = "DrillerZ - Industrial Cockpit";
         string JumpDrives_GroupName = "";
 
-        float refineryYield = 1.0f; // 100%
+        float refineryYield = 2.0f; // 200% - Full Yield
         
         
         // DO NOT TOUCH
@@ -118,15 +117,19 @@ namespace IngameScript
             { "Platinum", 0.005f },
             { "Uranium", 0.01f },
         };
+        
+        class LcdPanel
+        {
+            public IMyTextPanel Block;
+            public IMyTextSurface   Surface;
+            public RectangleF       Viewport;
+        }
 
+        List <LcdPanel> panels = new List<LcdPanel>();
+        
         public Program()
         {
             Runtime.UpdateFrequency = UpdateFrequency.Update10 | UpdateFrequency.Update100;
-
-            var data = version.Substring(1).Split('.');
-            major = data.Length >= 1 ? int.Parse(data[0]) : 0;
-            minor = data.Length >= 2 ? int.Parse(data[1]) : 0;
-            build = data.Length >= 3 ? int.Parse(data[2]) : 0;
 
             OreYields["Iron"] *= refineryYield;
             OreYields["Nickel"] *= refineryYield;
@@ -138,29 +141,25 @@ namespace IngameScript
             OreYields["Uranium"] *= refineryYield;
             OreYields["Platinum"] *= refineryYield;
 
-            var lcdBlocks = new List<IMyTerminalBlock>();
-            GridTerminalSystem.GetBlocksOfType(lcdBlocks, b => b != Me && b.CustomName.Contains(LCD_Keyword));
-            var surfaceProvider = lcdBlocks.Count > 0 ? lcdBlocks[0] as IMyTextSurfaceProvider : null;
-
-            if (surfaceProvider != null && surfaceProvider.SurfaceCount > 0)
+            var lcdBlocks = new List<IMyTextPanel>();
+            GridTerminalSystem.GetBlocksOfType(lcdBlocks, block => block.CustomName.Contains(LCD_Keyword));
+            foreach (var block in lcdBlocks)
             {
-                if (surfaceProvider.SurfaceCount == 4)
+                var provider = block as IMyTextSurfaceProvider;
+                var surface = provider.GetSurface(0);
+                PrepareTextSurfaceForSprites(surface);
+                
+                if (block.CustomName.Contains(LCD_Keyword))
                 {
-                    _drawingSurface = surfaceProvider.GetSurface(3);
-                    isCockpit = true;
+                    panels.Add(new LcdPanel
+                    {
+                        Block = block,
+                        Surface = surface,
+                        Viewport =
+                            new RectangleF((surface.TextureSize - surface.SurfaceSize) / 2f, surface.SurfaceSize),
+                    });
                 }
-                else
-                    _drawingSurface = surfaceProvider.GetSurface(0);
             }
-            else
-                throw new Exception("Specified block does not have LCDs!");
-
-            _viewport = new RectangleF(
-                (_drawingSurface.TextureSize - _drawingSurface.SurfaceSize) / 2f,
-                _drawingSurface.SurfaceSize
-            );
-
-            PrepareTextSurfaceForSprites(_drawingSurface);
         }
 
         public void Save()
@@ -353,20 +352,25 @@ namespace IngameScript
                 }
             }
             
-            var frame = _drawingSurface.DrawFrame();
-            DrawSprites(ref frame);
-            frame.Dispose();
+            foreach (var panel in panels)
+            {
+                var frame = panel.Surface.DrawFrame();
+
+                DrawSprites(ref frame, panel);
+                
+                frame.Dispose();
+            }
 
         }
 
-        public void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
+        void PrepareTextSurfaceForSprites(IMyTextSurface textSurface)
         {
             textSurface.ScriptBackgroundColor = new Color(0, 0, 0, 255);
             textSurface.ContentType = ContentType.SCRIPT;
             textSurface.Script = "";
         }
 
-        public void DrawSprites(ref MySpriteDrawFrame frame)
+        void DrawSprites(ref MySpriteDrawFrame frame, LcdPanel panel)
         {
             var position = new Vector2(256, 0) + _viewport.Position;
             float scale = 1.0f;
@@ -381,17 +385,20 @@ namespace IngameScript
 
             _drawTick++;
 
-            frame.Add(new MySprite()
+            if (gridJumpDriveCount != 0)
             {
-                Type = SpriteType.TEXT,
-                Data = $"Max Jump Distance: {maxJumpDistance:N0} km",
-                Position = position,
-                RotationOrScale = scale,
-                Color = Color.White,
-                Alignment = TextAlignment.CENTER,
-                FontId = "White"
-            });
-            
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"Max Jump Distance: {maxJumpDistance:N0} km",
+                    Position = position,
+                    RotationOrScale = scale,
+                    Color = Color.White,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+            }
+
             if (gravity != 0)
             {
                 position += oreDisplayIncrement;
@@ -406,6 +413,35 @@ namespace IngameScript
                     Alignment = TextAlignment.CENTER,
                     FontId = "White"
                 });
+                
+                position += oreDisplayIncrement;
+                
+                frame.Add(new MySprite()
+                {
+                    Type = SpriteType.TEXT,
+                    Data = $"Maximum Mass: {maxMass:N0}kg",
+                    Position = position,
+                    RotationOrScale = scale,
+                    Color = Color.White,
+                    Alignment = TextAlignment.CENTER,
+                    FontId = "White"
+                });
+
+                if (savedMass != 0)
+                {
+                    position += oreDisplayIncrement;
+                
+                    frame.Add(new MySprite()
+                    {
+                        Type = SpriteType.TEXT,
+                        Data = $"Saved Mass: {savedMass:N0}kg",
+                        Position = position,
+                        RotationOrScale = scale,
+                        Color = Color.White,
+                        Alignment = TextAlignment.CENTER,
+                        FontId = "White"
+                    });
+                }
             }
             
             position += oreDisplayIncrement;
